@@ -101,6 +101,10 @@ def make_parser():
         default=None,
         nargs=argparse.REMAINDER,
     )
+    parser.add_argument('--litert',
+                        action='store_true',
+                        default=False,
+                        help='whether convert into litert')
 
     return parser
 
@@ -172,6 +176,11 @@ def trt_export(onnx_path, batch_size, inference_h, inference_w, trt_mode, calib_
             f.write(engine.serialize())
         return engine_path
 
+@logger.catch
+def litert_export(model, dummy_input):
+    import ai_edge_torch
+    #TODO Finish this script
+
 
 @logger.catch
 def main():
@@ -234,6 +243,9 @@ def main():
 
     dummy_input = torch.randn(args.batch_size, 3, args.img_size,
                               args.img_size).to(device)
+    if args.litert:
+        litert_export(model, dummy_input)
+        return
     _ = model(dummy_input)
     torch.onnx._export(
         model,
