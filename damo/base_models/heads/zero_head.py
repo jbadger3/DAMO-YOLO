@@ -257,7 +257,7 @@ class ZeroHead(nn.Module):
                                                     device=xin[0].device)
                 for i, stride in enumerate(self.strides)
             ]
-            self.mlvl_priors = torch.cat(mlvl_priors_list, dim=1)
+            mlvl_priors = torch.cat(mlvl_priors_list, dim=1)
             self.feat_size[0] = xin[0].shape
 
         # forward for bboxes and classification prediction
@@ -287,8 +287,8 @@ class ZeroHead(nn.Module):
 
             cls_scores = torch.cat(cls_scores_new, dim=1)[:, :, :self.num_classes]
             bbox_preds = torch.cat(bbox_preds_new, dim=1)
-            bbox_preds = self.integral(bbox_preds) * self.mlvl_priors[..., 2, None]
-            bbox_preds = distance2bbox(self.mlvl_priors[..., :2], bbox_preds)
+            bbox_preds = self.integral(bbox_preds) * mlvl_priors[..., 2, None]
+            bbox_preds = distance2bbox(mlvl_priors[..., :2], bbox_preds)
 
             if self.nms:
                 output = postprocess(cls_scores, bbox_preds, self.num_classes,
