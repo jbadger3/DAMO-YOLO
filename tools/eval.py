@@ -23,8 +23,9 @@ def mkdir(path):
 def make_parser():
     parser = argparse.ArgumentParser('damo eval')
 
-    # distributed
+    # distributed - support both old --local_rank and new --local-rank for backward compatibility
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--local-rank', type=int, default=0, dest='local_rank')
     parser.add_argument(
         '-f',
         '--config_file',
@@ -74,7 +75,10 @@ def make_parser():
 def main():
     args = make_parser().parse_args()
 
-    torch.cuda.set_device(args.local_rank)
+    # Get local_rank from environment variable (torchrun) or command line argument (legacy)
+    local_rank = int(os.environ.get('LOCAL_RANK', args.local_rank))
+    
+    torch.cuda.set_device(local_rank)
     torch.distributed.init_process_group(backend='nccl', init_method='env://')
     synchronize()
 
@@ -84,23 +88,23 @@ def main():
 
     save_dir = os.path.join(config.miscs.output_dir, config.miscs.exp_name)
 
-    if args.local_rank == 0:
+    if local_rank == 0:
         os.makedirs(save_dir, exist_ok=True)
 
     setup_logger(save_dir,
-                 distributed_rank=args.local_rank,
+                 distributed_rank=local_rank,
                  mode='w')
     logger.info('Args: {}'.format(args))
 
     model = build_local_model(config, device)
     model.head.nms = True
 
-    model.cuda(args.local_rank)
+    model.cuda(local_rank)
     model.eval()
 
     ckpt_file = args.ckpt
     logger.info('loading checkpoint from {}'.format(ckpt_file))
-    loc = 'cuda:{}'.format(args.local_rank)
+    loc = 'cuda:{}'.format(local_rank)
     ckpt = torch.load(ckpt_file, map_location=loc)
     new_state_dict = {}
     for k, v in ckpt['model'].items():
@@ -117,14 +121,14 @@ def main():
     logger.info('Model Summary: {}'.format(get_model_info(model,
         (infer_shape, infer_shape))))
 
-    model = build_ddp_model(model, local_rank=args.local_rank)
+    model = build_ddp_model(model, local_rank=local_rank)
     if args.fuse:
         logger.info('\tFusing model...')
         model = fuse_model(model)
     # start evaluate
     output_folders = [None] * len(config.dataset.val_ann)
 
-    if args.local_rank == 0 and config.miscs.output_dir:
+    if local_rank == 0 and config.miscs.output_dir:
         for idx, dataset_name in enumerate(config.dataset.val_ann):
             output_folder = os.path.join(config.miscs.output_dir, 'inference',
                                          dataset_name)

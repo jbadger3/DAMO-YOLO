@@ -161,7 +161,7 @@ ln -s /path/to/your/coco ./datasets/coco
 
 Step 2. Reproduce our results on COCO by specifying -f(config filename)
 ```shell
-python -m torch.distributed.launch --nproc_per_node=8 tools/train.py -f configs/damoyolo_tinynasL25_S.py
+torchrun --nproc_per_node=8 tools/train.py -f configs/damoyolo_tinynasL25_S.py
 ```
 </details>
 
@@ -178,7 +178,7 @@ Please refer to [custom dataset tutorial](./assets/CustomDatasetTutorial.md) for
 <summary>Evaluation</summary>
 
 ```shell
-python -m torch.distributed.launch --nproc_per_node=8 tools/eval.py -f configs/damoyolo_tinynasL25_S.py --ckpt /path/to/your/damoyolo_tinynasL25_S.pth
+torchrun --nproc_per_node=8 tools/eval.py -f configs/damoyolo_tinynasL25_S.py --ckpt /path/to/your/damoyolo_tinynasL25_S.pth
 ```
 </details>
 

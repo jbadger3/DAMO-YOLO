@@ -74,19 +74,18 @@ class Config(metaclass=ABCMeta):
         self.miscs = miscs
 
     def get_data(self, name):
-        if 'coco' in name:
-            data_dir = DatasetCatalog.DATA_DIR
-            attrs = DatasetCatalog.DATASETS[name]
-            args = dict(
-                root=join(data_dir, attrs['img_dir']),
-                ann_file=join(data_dir, attrs['ann_file']),
-            )
-            return dict(
-                factory='COCODataset',
-                args=args,
-            )
-        else:
-            raise RuntimeError('Only support coco format dataset now!')
+       
+        data_dir = DatasetCatalog.DATA_DIR
+        attrs = DatasetCatalog.DATASETS[name]
+        args = dict(
+            root=join(data_dir, attrs['img_dir']),
+            ann_file=join(data_dir, attrs['ann_file']),
+        )
+        return dict(
+            factory='COCODataset',
+            args=args,
+        )
+      
 
     def __repr__(self):
         table_header = ['keys', 'values']

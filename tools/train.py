@@ -2,6 +2,7 @@
 # Copyright (C) Alibaba Group Holding Limited. All rights reserved.
 import argparse
 import copy
+import os
 
 import torch
 from loguru import logger
@@ -28,7 +29,9 @@ def make_parser():
         type=str,
         help='plz input your config file',
     )
+    # Support both old --local_rank and new --local-rank for backward compatibility
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--local-rank', type=int, default=0, dest='local_rank')
     parser.add_argument('--tea_config', type=str, default=None)
     parser.add_argument('--tea_ckpt', type=str, default=None)
     parser.add_argument(
@@ -44,7 +47,10 @@ def make_parser():
 def main():
     args = make_parser().parse_args()
 
-    torch.cuda.set_device(args.local_rank)
+    # Get local_rank from environment variable (torchrun) or command line argument (legacy)
+    local_rank = int(os.environ.get('LOCAL_RANK', args.local_rank))
+    
+    torch.cuda.set_device(local_rank)
     torch.distributed.init_process_group(backend='nccl', init_method='env://')
     synchronize()
     if args.tea_config is not None:
@@ -57,7 +63,7 @@ def main():
 
 
     trainer = Trainer(config, args, tea_config)
-    trainer.train(args.local_rank)
+    trainer.train(local_rank)
 
 
 if __name__ == '__main__':

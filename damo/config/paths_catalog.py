@@ -5,7 +5,7 @@ import os
 
 
 class DatasetCatalog(object):
-    DATA_DIR = 'datasets'
+    DATA_DIR = 'damo/dataset/datasets'
     DATASETS = {
         'coco_2017_train': {
             'img_dir': 'coco/train2017',
@@ -19,6 +19,14 @@ class DatasetCatalog(object):
             'img_dir': 'coco/test2017',
             'ann_file': 'coco/annotations/image_info_test-dev2017.json'
         },
+        'c3pi_reference_5k_100_tab_max_train': {
+            'img_dir': 'c3pi_reference_5k_100_tab_max_splits/train',
+            'ann_file': 'c3pi_reference_5k_100_tab_max_splits/train/_annotations.coco.json'
+        },
+        'c3pi_reference_5k_100_tab_max_test': {
+            'img_dir': 'c3pi_reference_5k_100_tab_max_splits/test',
+            'ann_file': 'c3pi_reference_5k_100_tab_max_splits/test/_annotations.coco.json'
+        }
         }
 
     @staticmethod

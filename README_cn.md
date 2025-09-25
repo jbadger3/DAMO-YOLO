@@ -161,7 +161,7 @@ ln -s /path/to/your/coco ./datasets/coco
 
 步骤二. 在COCO数据上进行训练，使用-f选项指定配置(config)文件。
 ```shell
-python -m torch.distributed.launch --nproc_per_node=8 tools/train.py -f configs/damoyolo_tinynasL25_S.py
+torchrun --nproc_per_node=8 tools/train.py -f configs/damoyolo_tinynasL25_S.py
 ```
 </details>
 
@@ -177,7 +177,7 @@ python -m torch.distributed.launch --nproc_per_node=8 tools/train.py -f configs/
 <summary>在COCO val上测评训练好的模型</summary>
 
 ```shell
-python -m torch.distributed.launch --nproc_per_node=8 tools/eval.py -f configs/damoyolo_tinynasL25_S.py --ckpt /path/to/your/damoyolo_tinynasL25_S.pth
+torchrun --nproc_per_node=8 tools/eval.py -f configs/damoyolo_tinynasL25_S.py --ckpt /path/to/your/damoyolo_tinynasL25_S.pth
 ```
 </details>
 

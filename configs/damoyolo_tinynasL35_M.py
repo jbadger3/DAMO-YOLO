@@ -13,8 +13,9 @@ class Config(MyConfig):
             os.path.realpath(__file__))[1].split('.')[0]
         self.miscs.eval_interval_epochs = 10
         self.miscs.ckpt_interval_epochs = 10
+        self.miscs.num_workers = 16
         # optimizer
-        self.train.batch_size = 256
+        self.train.batch_size = 28
         self.train.base_lr_per_img = 0.01 / 64
         self.train.min_lr_ratio = 0.05
         self.train.weight_decay = 5e-4
@@ -30,8 +31,8 @@ class Config(MyConfig):
         self.train.augment.mosaic_mixup.shear = 2.0
         self.train.augment.mosaic_mixup.mosaic_scale = (0.1, 2.0)
 
-        self.dataset.train_ann = ('coco_2017_train', )
-        self.dataset.val_ann = ('coco_2017_val', )
+        self.dataset.train_ann = ('c3pi_reference_5k_100_tab_max_train', )
+        self.dataset.val_ann = ('c3pi_reference_5k_100_tab_max_test', )
 
         # backbone
         structure = self.read_structure(
@@ -63,7 +64,7 @@ class Config(MyConfig):
 
         ZeroHead = {
             'name': 'ZeroHead',
-            'num_classes': 80,
+            'num_classes': 6,
             'in_channels': [128, 256, 512],
             'stacked_convs': 0,
             'reg_max': 16,
@@ -74,4 +75,4 @@ class Config(MyConfig):
         }
         self.model.head = ZeroHead
 
-        self.dataset.class_names = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+        self.dataset.class_names = ['no-object', 'tablet-imprint', 'tablet-no-imprint', 'capsule-imprint', 'capsule-no-imprint', 'hopper']

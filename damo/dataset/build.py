@@ -93,7 +93,8 @@ def build_dataloader(datasets,
                      no_aug_epochs=0,
                      is_train=True,
                      num_workers=8,
-                     size_div=32):
+                     size_div=32,
+                     pin_memory=None):
 
     num_gpus = get_world_size()
     assert (
@@ -132,11 +133,15 @@ def build_dataloader(datasets,
                                            num_iters, start_iter,
                                            enable_mosaic_mixup)
         collator = BatchCollator(size_div)
+        # Enable pinned memory by default if CUDA is available, unless explicitly set
+        use_pin_memory = pin_memory if pin_memory is not None else torch.cuda.is_available()
+        
         data_loader = torch.utils.data.DataLoader(
             dataset,
             num_workers=num_workers,
             batch_sampler=batch_sampler,
             collate_fn=collator,
+            pin_memory=use_pin_memory,
         )
         data_loaders.append(data_loader)
     if is_train:

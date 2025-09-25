@@ -85,6 +85,6 @@ https://github.com/tinyvision/DAMO-YOLO/blob/cae1f6c8112ee8fa29955ca9c926c5c5023
 ## Step4. Finetune on custom dataset
 You can run the finetuning with the following code:
 ```
-python -m torch.distributed.launch --nproc_per_node=8 tools/train.py -f configs/damoyolo_tinynasL20_T.py
+torchrun --nproc_per_node=8 tools/train.py -f configs/damoyolo_tinynasL20_T.py
 ```
 

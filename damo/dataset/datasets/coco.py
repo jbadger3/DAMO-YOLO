@@ -7,7 +7,60 @@ from torchvision.datasets.coco import CocoDetection
 
 from damo.structures.bounding_box import BoxList
 
+try:
+    import pycocotools.mask as mask_util
+    PYCOCOTOOLS_AVAILABLE = True
+except ImportError:
+    PYCOCOTOOLS_AVAILABLE = False
+
 cv2.setNumThreads(0)
+
+
+def rle_to_polygon(rle, img_shape):
+    """
+    Convert RLE mask to polygon format using pycocotools.
+    
+    Args:
+        rle: RLE format mask (dict with 'counts' and 'size')
+        img_shape: tuple of (height, width)
+    
+    Returns:
+        list: Polygon coordinates as [x1, y1, x2, y2, ...]
+    """
+    if not PYCOCOTOOLS_AVAILABLE:
+        return []
+    
+    try:
+        # Decode RLE to binary mask
+        if isinstance(rle, dict):
+            mask = mask_util.decode(rle)
+        else:
+            return []
+            
+        # Find contours in the binary mask
+        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Convert largest contour to polygon
+        if len(contours) > 0:
+            # Get the largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+            
+            # Simplify the contour to reduce points
+            epsilon = 0.005 * cv2.arcLength(largest_contour, True)
+            approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+            
+            # Flatten to [x1, y1, x2, y2, ...] format
+            polygon = approx.flatten().tolist()
+            
+            # Ensure we have at least 6 points (3 vertices for a triangle)
+            if len(polygon) >= 6:
+                return polygon
+                
+    except Exception as e:
+        # If conversion fails, return empty list
+        pass
+    
+    return []
 
 
 class COCODataset(CocoDetection):
@@ -91,14 +144,83 @@ class COCODataset(CocoDetection):
 
         obj_masks = []
         for obj in anno:
-            obj_mask = []
             if 'segmentation' in obj:
-                for mask in obj['segmentation']:
-                    obj_mask += mask
-                if len(obj_mask) > 0:
-                    obj_masks.append(obj_mask)
+                seg = obj['segmentation']
+                
+                # Handle different segmentation formats
+                if isinstance(seg, dict):
+                    # RLE format (compressed or uncompressed)
+                    if PYCOCOTOOLS_AVAILABLE:
+                        try:
+                            # Convert RLE to polygon
+                            img_info = self.get_img_info(idx)
+                            img_shape = (img_info['height'], img_info['width'])
+                            polygon = rle_to_polygon(seg, img_shape)
+                            if len(polygon) > 0:
+                                obj_mask_array = np.array(polygon, dtype=np.float32)
+                                if len(obj_mask_array) % 2 == 0:
+                                    obj_masks.append(obj_mask_array)
+                        except Exception:
+                            pass
+                    continue
+                    
+                elif isinstance(seg, list):
+                    # Check if it's a list of polygons or RLE
+                    if len(seg) > 0:
+                        # Check if this is an RLE in list format
+                        if len(seg) == 1 and isinstance(seg[0], dict):
+                            # Single RLE object
+                            if PYCOCOTOOLS_AVAILABLE:
+                                try:
+                                    # Convert RLE to polygon
+                                    img_info = self.get_img_info(idx)
+                                    img_shape = (img_info['height'], img_info['width'])
+                                    polygon = rle_to_polygon(seg[0], img_shape)
+                                    if len(polygon) > 0:
+                                        obj_mask_array = np.array(polygon, dtype=np.float32)
+                                        if len(obj_mask_array) % 2 == 0:
+                                            obj_masks.append(obj_mask_array)
+                                except Exception:
+                                    pass
+                            continue
+                            
+                        elif isinstance(seg[0], list):
+                            # Polygon format - list of [x1,y1,x2,y2,...]
+                            obj_mask = []
+                            for mask in seg:
+                                if isinstance(mask, list) and all(isinstance(x, (int, float)) for x in mask):
+                                    obj_mask.extend(mask)
+                            
+                            if len(obj_mask) > 0:
+                                try:
+                                    # Ensure all values can be converted to float
+                                    obj_mask_array = np.array(obj_mask, dtype=np.float32)
+                                    if len(obj_mask_array) % 2 == 0:  # Must have even number for x,y pairs
+                                        obj_masks.append(obj_mask_array)
+                                except (ValueError, TypeError):
+                                    # Skip if conversion fails
+                                    continue
+                                    
+                        elif isinstance(seg[0], (int, float)) and all(isinstance(x, (int, float)) for x in seg):
+                            # Single polygon as flat list
+                            try:
+                                obj_mask_array = np.array(seg, dtype=np.float32)
+                                if len(obj_mask_array) % 2 == 0:
+                                    obj_masks.append(obj_mask_array)
+                            except (ValueError, TypeError):
+                                continue
+                        else:
+                            # Could be RLE in string format or other format
+                            if PYCOCOTOOLS_AVAILABLE and isinstance(seg[0], str):
+                                try:
+                                    # Try to decode as RLE - skip for now
+                                    pass
+                                except Exception:
+                                    pass
+                            continue
+        
         seg_masks = [
-            np.array(obj_mask, dtype=np.float32).reshape(-1, 2)
+            obj_mask.reshape(-1, 2)
             for obj_mask in obj_masks
         ]
 
