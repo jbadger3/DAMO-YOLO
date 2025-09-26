@@ -113,6 +113,11 @@ class ZeroHead(nn.Module):
                                          iou_weight=3.0)
 
         self.feat_size = [torch.zeros(4) for _ in strides]
+        
+        # For export compatibility: precompute priors for standard input sizes
+        # These will be used during export when input size is static
+        self.export_mlvl_priors = None
+        self.export_feat_sizes = None
 
         super(ZeroHead, self).__init__()
         self.integral = Integral(self.reg_max)
@@ -192,6 +197,34 @@ class ZeroHead(nn.Module):
             normal_init(self.gfl_cls[i], std=0.01, bias=bias_cls)
             normal_init(self.gfl_reg[i], std=0.01)
 
+    def prepare_export_priors(self, input_size=(640, 640), batch_size=1):
+        """Precompute priors for export with static input size."""
+        device = next(self.parameters()).device
+        dtype = next(self.parameters()).dtype
+        
+        # Calculate feature map sizes based on input size
+        feat_sizes = []
+        for stride in self.strides:
+            feat_h = input_size[0] // stride
+            feat_w = input_size[1] // stride
+            feat_sizes.append((feat_h, feat_w))
+        
+        # Precompute priors for each level
+        mlvl_priors_list = []
+        for i, (feat_h, feat_w) in enumerate(feat_sizes):
+            priors = self.get_single_level_center_priors(
+                batch_size, (feat_h, feat_w), self.strides[i],
+                dtype=dtype, device=device
+            )
+            mlvl_priors_list.append(priors)
+        
+        # Store as model buffers for export
+        export_mlvl_priors = torch.cat(mlvl_priors_list, dim=1)
+        self.register_buffer('_export_mlvl_priors', export_mlvl_priors)
+        self.export_feat_sizes = feat_sizes
+        
+        return export_mlvl_priors
+
     def forward(self, xin, labels=None, imgs=None, aux_targets=None):
         if self.training:
             return self.forward_train(xin=xin, labels=labels, imgs=imgs)
@@ -246,19 +279,25 @@ class ZeroHead(nn.Module):
         return loss
 
     def forward_eval(self, xin, labels=None, imgs=None):
-
+        
         # prepare priors for label assignment and bbox decode
-        if self.feat_size[0] != xin[0].shape:
-            mlvl_priors_list = [
-                self.get_single_level_center_priors(xin[i].shape[0],
-                                                    xin[i].shape[-2:],
-                                                    stride,
-                                                    dtype=torch.float32,
-                                                    device=xin[0].device)
-                for i, stride in enumerate(self.strides)
-            ]
-            mlvl_priors = torch.cat(mlvl_priors_list, dim=1)
-            self.feat_size[0] = xin[0].shape
+        # Use precomputed priors if available (export mode) or compute dynamically
+        if hasattr(self, '_export_mlvl_priors') and self._export_mlvl_priors is not None:
+            # Export mode: use precomputed static priors
+            mlvl_priors = self._export_mlvl_priors
+        else:
+            # Dynamic mode: compute priors based on actual input size
+            if self.feat_size[0] != xin[0].shape:
+                mlvl_priors_list = [
+                    self.get_single_level_center_priors(xin[i].shape[0],
+                                                        xin[i].shape[-2:],
+                                                        stride,
+                                                        dtype=torch.float32,
+                                                        device=xin[0].device)
+                    for i, stride in enumerate(self.strides)
+                ]
+                mlvl_priors = torch.cat(mlvl_priors_list, dim=1)
+                self.feat_size[0] = xin[0].shape
 
         # forward for bboxes and classification prediction
         cls_scores, bbox_preds = multi_apply(
