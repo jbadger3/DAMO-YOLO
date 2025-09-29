@@ -202,10 +202,21 @@ class SEModule(nn.Module):
         )
 
     def forward(self, x):
+        """
+        Forward pass modified to avoid expand_as operation for LiteRT compatibility.
+        
+        Original implementation (causes BROADCAST_TO issues in LiteRT):
+        # b, c, _, _ = x.size()
+        # y = self.avg_pool(x).view(b, c)
+        # y = self.fc(y).view(b, c, 1, 1)
+        # return x * y.expand_as(x)
+        
+        Modified to use direct broadcasting: [B,C,H,W] * [B,C,1,1] -> [B,C,H,W]
+        """
         b, c, _, _ = x.size()
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
-        return x * y.expand_as(x)
+        return x * y  # Direct broadcasting - LiteRT compatible
 
 
 

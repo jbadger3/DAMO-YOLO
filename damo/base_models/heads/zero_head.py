@@ -279,6 +279,20 @@ class ZeroHead(nn.Module):
         return loss
 
     def forward_eval(self, xin, labels=None, imgs=None):
+        """
+        Forward evaluation method modified to avoid creating 5D tensors.
+        
+        MODIFICATION: This function has been modified to keep tensor rank <= 4
+        for better compatibility with inference engines and hardware accelerators.
+        
+        Original 5D tensor implementation (export_with_post path):
+        # bbox_pred = F.softmax(bbox_pred.reshape(N, 4, self.reg_max + 1, H, V), dim=2)
+        # bbox_pred = bbox_pred.reshape(N, 4, self.reg_max + 1, H, V)
+        # bbox_pred = bbox_pred.flatten(start_dim=3).permute(0, 3, 1, 2)
+        
+        Modified implementation uses 4D tensors throughout by flattening spatial
+        dimensions (H*W) before applying softmax along the distribution dimension.
+        """
         
         # prepare priors for label assignment and bbox decode
         # Use precomputed priors if available (export mode) or compute dynamically
@@ -311,16 +325,24 @@ class ZeroHead(nn.Module):
         )
 
         if self.export_with_post:
+            # Modified to avoid 5D tensors - apply softmax to 4D reshaped tensor
+            # Original 5D implementation:
+            # bbox_pred = F.softmax(bbox_pred.reshape(N, 4, self.reg_max + 1, H, W), dim=2)
+            # bbox_pred = bbox_pred.reshape(N, 4, self.reg_max + 1, H, W)
+            
             cls_scores_new, bbox_preds_new = [], []
             for cls_score, bbox_pred in zip(cls_scores, bbox_preds):
                 N, C, H, W = bbox_pred.size()
-                bbox_pred = F.softmax(bbox_pred.reshape(N, 4, self.reg_max + 1, H, W),
-                    dim=2)
-                bbox_pred = bbox_pred.reshape(N, 4, self.reg_max + 1, H, W)
+                # Reshape to [N, 4*(reg_max+1), H*W] and apply softmax along reg_max dimension
+                bbox_pred = bbox_pred.view(N, 4, self.reg_max + 1, H * W)
+                bbox_pred = F.softmax(bbox_pred, dim=2)  # Apply softmax along reg_max dimension
+                bbox_pred = bbox_pred.view(N, 4 * (self.reg_max + 1), H, W)  # Back to 4D
+                
                 cls_score = cls_score.flatten(start_dim=2).permute(
                     0, 2, 1)
-                bbox_pred = bbox_pred.flatten(start_dim=3).permute(
-                    0, 3, 1, 2)
+                # Reshape bbox_pred for final output format
+                bbox_pred = bbox_pred.view(N, 4, self.reg_max + 1, H * W).permute(
+                    0, 3, 1, 2)  # [N, H*W, 4, reg_max+1]
                 cls_scores_new.append(cls_score)
                 bbox_preds_new.append(bbox_pred)
 
@@ -336,9 +358,37 @@ class ZeroHead(nn.Module):
         return cls_scores, bbox_preds
 
     def forward_single(self, x, cls_convs, reg_convs, gfl_cls, gfl_reg, scale):
-        """Forward feature of a single scale level.
-
         """
+        Forward feature of a single scale level - modified to avoid 5D tensors.
+        
+        MODIFICATION: This function has been modified to keep tensor rank <= 4
+        for better compatibility with inference engines and hardware accelerators.
+        
+        Original 5D tensor implementation (training path):
+        # bbox_before_softmax = bbox_pred.reshape(N, 4, self.reg_max + 1, H, V)
+        # bbox_before_softmax = bbox_before_softmax.flatten(start_dim=3).permute(0, 3, 1, 2)
+        # bbox_pred = F.softmax(bbox_pred.reshape(N, 4, self.reg_max + 1, H, V), dim=2)
+        # bbox_pred = bbox_pred.reshape(N, 4, self.reg_max + 1, H, V)
+        # bbox_pred = bbox_pred.flatten(start_dim=3).permute(0, 3, 1, 2)
+        
+        Modified implementation works with 4D tensors by flattening spatial dimensions
+        (H*W) and applying softmax along the distribution bins dimension (reg_max+1).
+        The final output format remains identical: [N, H*W, 4, reg_max+1].
+        
+        Args:
+            x: Input feature map
+            cls_convs: Classification convolution layers
+            reg_convs: Regression convolution layers  
+            gfl_cls: Classification head
+            gfl_reg: Regression head
+            scale: Scale factor
+            
+        Returns:
+            cls_score: Classification scores
+            bbox_pred: Bounding box predictions
+            bbox_before_softmax: Raw bbox predictions (training only)
+        """
+        
         cls_feat = x
         reg_feat = x
 
@@ -350,19 +400,23 @@ class ZeroHead(nn.Module):
         cls_score = gfl_cls(cls_feat).sigmoid()
         N, C, H, W = bbox_pred.size()
         if self.training:
-            bbox_before_softmax = bbox_pred.reshape(N, 4, self.reg_max + 1, H,
-                                                    W)
-            bbox_before_softmax = bbox_before_softmax.flatten(
-                start_dim=3).permute(0, 3, 1, 2)
+            # Modified to avoid 5D tensors - work with 4D tensors throughout
+            # Original 5D implementation:
+            # bbox_before_softmax = bbox_pred.reshape(N, 4, self.reg_max + 1, H, W)
+            # bbox_pred = F.softmax(bbox_pred.reshape(N, 4, self.reg_max + 1, H, V), dim=2)
+            # bbox_pred = bbox_pred.reshape(N, 4, self.reg_max + 1, H, W)
+            
+            # Store before softmax in 4D format
+            bbox_before_softmax = bbox_pred.view(N, 4, self.reg_max + 1, H * W)
+            bbox_before_softmax = bbox_before_softmax.permute(0, 3, 1, 2)  # [N, H*W, 4, reg_max+1]
 
-            bbox_pred = F.softmax(bbox_pred.reshape(N, 4, self.reg_max + 1, H, W),
-                                 dim=2)
-
-            bbox_pred = bbox_pred.reshape(N, 4, self.reg_max + 1, H, W)
+            # Apply softmax to 4D tensor
+            bbox_pred = bbox_pred.view(N, 4, self.reg_max + 1, H * W)
+            bbox_pred = F.softmax(bbox_pred, dim=2)  # Apply softmax along reg_max dimension
 
             cls_score = cls_score.flatten(start_dim=2).permute(
                 0, 2, 1)  # N, h*w, self.num_classes+1
-            bbox_pred = bbox_pred.flatten(start_dim=3).permute(
+            bbox_pred = bbox_pred.permute(
                 0, 3, 1, 2)  # N, h*w, 4, self.reg_max+1
 
         if self.training:

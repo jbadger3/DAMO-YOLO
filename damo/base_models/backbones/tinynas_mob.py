@@ -30,10 +30,21 @@ class SEModule(nn.Module):
         )
 
     def forward(self, x):
+        """
+        Forward pass modified to avoid expand_as operation for LiteRT compatibility.
+        
+        Original implementation (causes BROADCAST_TO issues in LiteRT):
+        # b, c, _, _ = x.size()
+        # y = self.avg_pool(x).view(b, c)
+        # y = self.fc(y).view(b, c, 1, 1)
+        # return x * y.expand_as(x)
+        
+        Modified to use direct broadcasting: [B,C,H,W] * [B,C,1,1] -> [B,C,H,W]
+        """
         b, c, _, _ = x.size()
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
-        return x * y.expand_as(x)
+        return x * y  # Direct broadcasting - LiteRT compatible
 
 
 class ConvKXBN(nn.Module):
@@ -82,12 +93,29 @@ def depthwise_conv(i, o, kernel_size, stride=1, padding=0, bias=False):
     return nn.Conv2d(i, o, kernel_size, stride, padding, bias=bias, groups=i)
 
 def channel_shuffle(x, groups):
-    batchsize, num_channels, height, width = x.data.size()
+    """
+    Channel shuffle operation modified to keep tensor rank <= 4.
+    
+    Original implementation (creates 5D tensor):
+    # batchsize, num_channels, height, width = x.data.size()
+    # channels_per_group = num_channels // groups
+    # x = x.view(batchsize, groups, channels_per_group, height, width)  # 5D tensor
+    # x = torch.transpose(x, 1, 2).contiguous()
+    # x = x.view(batchsize, -1, height, width)
+    # return x
+    
+    Modified implementation uses index-based permutation to avoid 5D tensors.
+    """
+    batchsize, num_channels, height, width = x.size()
     channels_per_group = num_channels // groups
-    x = x.view(batchsize, groups, channels_per_group, height, width)
-    x = torch.transpose(x, 1, 2).contiguous()
-    x = x.view(batchsize, -1, height, width)
-    return x
+    
+    # Create permutation indices without 5D tensor
+    # Interleave channels: [0,1,2,3,4,5] -> [0,3,1,4,2,5] for groups=3
+    indices = torch.arange(num_channels, device=x.device, dtype=torch.long)
+    indices = indices.view(groups, channels_per_group).t().contiguous().view(-1)
+    
+    # Apply permutation using advanced indexing (stays 4D)
+    return x[:, indices, :, :]
 
 class MobileV3Block(nn.Module):
     def __init__(self,
